@@ -1,0 +1,6 @@
+= batcher
+
+Describe your project here
+
+:include:batcher.rdoc
+

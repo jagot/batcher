@@ -1,0 +1,5 @@
+= batcher
+
+Generate this with
+    batcher rdoc
+After you have described your command line interface
