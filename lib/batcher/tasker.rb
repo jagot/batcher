@@ -83,7 +83,7 @@ module Batcher
 
     progressbar = ProgressBar.create(:total => max_n,
                                      :starting_at => max_n - ntasks,
-                                     :format => "[%c/%C] %e [%w]")
+                                     :format => "[%c/%C] %e [%w%i]")
 
     begin
       qf.subscribe(:manual_ack => true, :block => true) do |delivery_info, properties, body|
