@@ -18,6 +18,20 @@ module Batcher
     Hash[(0..c.count-1).map { |i| [variables[i], c[i]] }]
   end
 
+  def self.load_marked_runs()
+    if File.exists? "runs.dat"
+      Marshal.load File.read("runs.dat")
+    else
+      []
+    end
+  end
+
+  def self.mark_run(id)
+    runs = load_marked_runs
+    runs << id
+    File.open("runs.dat","w") { |file| file.write(Marshal.dump(runs)) }
+  end
+
   def self.tasker()
     app_config = YAML.load File.read './batcher_config.yml'
     sweep = app_config["sweep"]
@@ -51,28 +65,33 @@ module Batcher
     ch   = conn.create_channel
     q    = ch.queue("batcher_queue", :durable => true)
 
+    ntasks = 0
+    finished_runs = load_marked_runs
     coords.each_with_index do |c,i|
+      next if finished_runs.include? i
       cdir = directory % c
       nc = c.merge({:directory => cdir, :command => command})
 
       msg  = nc.merge({:id => i})
 
       q.publish(Marshal.dump(msg), :persistent => true)
+      ntasks += 1
     end
 
-    progressbar = ProgressBar.create(:total => max_n,
+    qf = ch.queue("batcher_finished", :durable => true)
+
+    progressbar = ProgressBar.create(:total => ntasks,
                                      :format => "[%c/%C] %e [%w]")
 
-    status = q.status
-    finished = 0
-    while status[:message_count] > 0
-      status = q.status
-      f = max_n - status[:message_count]
-      if f > finished
-        progressbar.progress += f-finished
-        finished = f
+    begin
+      qf.subscribe(:manual_ack => true, :block => true) do |delivery_info, properties, body|
+        data = Marshal.load(body)
+        mark_run data[:id]
+        progressbar.increment
+        ch.ack(delivery_info.delivery_tag)
       end
-      sleep 0.2
+    rescue Interrupt => _
+      conn.close
     end
 
     conn.close

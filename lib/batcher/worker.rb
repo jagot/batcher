@@ -12,6 +12,7 @@ module Batcher
 
     ch   = conn.create_channel
     q    = ch.queue("batcher_queue", :durable => true)
+    qf   = ch.queue("batcher_finished", :durable => true)
 
     ch.prefetch(1)
     puts " [*] Waiting for tasks. To exit press CTRL+C"
@@ -30,6 +31,7 @@ module Batcher
         end
         puts
         ch.ack(delivery_info.delivery_tag)
+        qf.publish(Marshal.dump({:id => data[:id]}), :persistent => true)
       end
     rescue Interrupt => _
       conn.close
