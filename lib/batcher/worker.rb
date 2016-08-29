@@ -1,11 +1,30 @@
 require 'bunny'
+require 'pty'
 
 module Batcher
   def self.run_cmd(cmd, options)
     command = cmd % options
     puts command
-    `#{command}`
-    $? == 0
+    master, slave = PTY.open
+    read = IO.pipe[0]
+    begin
+      pid = spawn(command, :in=>read, :out=>slave,
+                  :err=>[:child, :out])
+      read.close     # we dont need the read
+      slave.close    # or the slave
+      begin
+        while true
+          print master.gets "\r"
+        end
+      rescue Errno::EIO
+        status = PTY.check(pid)
+        puts
+        return status == 0
+      end
+    rescue PTY::ChildExited
+      puts "The child process exited!"
+    end
+    false
   end
 
   def self.worker(options)
