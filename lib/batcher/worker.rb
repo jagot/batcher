@@ -2,8 +2,10 @@ require 'bunny'
 
 module Batcher
   def self.run_cmd(cmd, options)
-    puts cmd % options
-    sleep 0.2
+    command = cmd % options
+    puts command
+    `#{command}`
+    $? == 0
   end
 
   def self.worker(options)
@@ -22,16 +24,18 @@ module Batcher
         data = Marshal.load(body)
         data.merge! options
         command = data[:command]
+        status = true
         if command.class == Array
           command.each do |cmd|
-            run_cmd cmd, data
+            status &= run_cmd cmd, data
+            break unless status
           end
         else
-          run_cmd command, data
+          status = run_cmd command, data
         end
         puts
         ch.ack(delivery_info.delivery_tag)
-        qf.publish(Marshal.dump({:id => data[:id]}), :persistent => true)
+        qf.publish(Marshal.dump({:id => data[:id], :success => status}), :persistent => true)
       end
     rescue Interrupt => _
       conn.close

@@ -2,7 +2,7 @@ require 'bunny'
 require 'ruby-progressbar'
 
 module Batcher
-  def self.coord(n, lengths, variables)
+  def self.coord(n, lengths, variables, values)
     p = 1
     cum_lengths = lengths.reverse.map{ |x| p *= x }.reverse[1..-1]
     t = n
@@ -15,7 +15,7 @@ module Batcher
         t
       end
     end
-    Hash[(0..c.count-1).map { |i| [variables[i], c[i]] }]
+    Hash[(0..c.count-1).map { |i| [variables[i], values[i][c[i]]] }]
   end
 
   def self.load_marked_runs()
@@ -45,7 +45,7 @@ module Batcher
     end
     values = sweep["variables"].map do |v|
       if v[1].class == Hash
-        v[1]["min"]..v[1]["max"]
+        (v[1]["min"]..v[1]["max"]).to_a
       else
         v[1]
       end
@@ -56,7 +56,7 @@ module Batcher
 
     max_n = lengths.inject :*
     coords = (0..max_n-1).map do |n|
-      coord n, lengths, variables
+      coord n, lengths, variables, values
     end
 
     conn = Bunny.new
@@ -64,6 +64,9 @@ module Batcher
 
     ch   = conn.create_channel
     q    = ch.queue("batcher_queue", :durable => true)
+    q.purge
+    qf = ch.queue("batcher_finished", :durable => true)
+    qf.purge
 
     ntasks = 0
     finished_runs = load_marked_runs
@@ -78,15 +81,14 @@ module Batcher
       ntasks += 1
     end
 
-    qf = ch.queue("batcher_finished", :durable => true)
-
-    progressbar = ProgressBar.create(:total => ntasks,
+    progressbar = ProgressBar.create(:total => max_n,
+                                     :starting_at => max_n - ntasks,
                                      :format => "[%c/%C] %e [%w]")
 
     begin
       qf.subscribe(:manual_ack => true, :block => true) do |delivery_info, properties, body|
         data = Marshal.load(body)
-        mark_run data[:id]
+        mark_run data[:id] if data[:success]
         progressbar.increment
         ch.ack(delivery_info.delivery_tag)
       end
