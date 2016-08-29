@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require 'gli'
+require 'yaml'
 begin # XXX: Remove this begin/rescue before distributing your app
 require 'batcher'
 rescue LoadError
@@ -8,6 +9,12 @@ rescue LoadError
   STDERR.puts "Feel free to remove this message from bin/batcher now"
   exit 64
 end
+
+app_config = if File.exists? './batcher_config.yml'
+               YAML.load File.read('./batcher_config.yml')
+             else
+               raise 'Could not find required configuration file, batcher_config.yml, in the current directory.'
+             end
 
 include GLI::App
 
@@ -18,16 +25,7 @@ version Batcher::VERSION
 subcommand_option_handling :normal
 arguments :strict
 
-desc 'Describe some switch here'
-switch [:s,:switch]
-
-desc 'Describe some flag here'
-default_value 'the default'
-arg_name 'The name of the argument'
-flag [:f,:flagname]
-
 desc 'Describe tasker here'
-arg_name 'Describe arguments to tasker here'
 command :tasker do |c|
   c.desc 'Describe a switch to tasker'
   c.switch :s
@@ -36,21 +34,17 @@ command :tasker do |c|
   c.default_value 'default'
   c.flag :f
   c.action do |global_options,options,args|
-
-    # Your command logic here
-     
-    # If you have any errors, just raise them
-    # raise "that command made no sense"
-
-    puts "tasker command ran"
+    Batcher.tasker
   end
 end
 
 desc 'Describe worker here'
-arg_name 'Describe arguments to worker here'
 command :worker do |c|
+  app_config.fetch("worker_flags",{}).each do |f|
+    c.flag [f[0]], :default_value => f[1]
+  end
   c.action do |global_options,options,args|
-    puts "worker command ran"
+    Batcher.worker options
   end
 end
 
